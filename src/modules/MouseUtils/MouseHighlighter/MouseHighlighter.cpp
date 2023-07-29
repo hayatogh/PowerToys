@@ -43,6 +43,7 @@ private:
     void AddDrawingPoint(MouseButton button);
     void UpdateDrawingPointPosition(MouseButton button);
     void StartDrawingPointFading(MouseButton button);
+    void UpdateDrawingPointColor(MouseButton button);
     void ClearDrawingPoint(MouseButton button);
     void ClearDrawing();
     HHOOK m_mouseHook = NULL;
@@ -219,6 +220,16 @@ void Highlighter::StartDrawingPointFading(MouseButton button)
     circleShape.FillBrush().StartAnimation(L"Color", animation);
 }
 
+void Highlighter::UpdateDrawingPointColor(MouseButton _button)
+{
+    winrt::Windows::UI::Composition::CompositionSpriteShape circleShape{ nullptr };
+
+    // always
+    circleShape = m_alwaysPointer;
+
+    circleShape.FillBrush().as<winrt::Windows::UI::Composition::CompositionColorBrush>().Color(m_alwaysColor);
+}
+
 void Highlighter::ClearDrawingPoint(MouseButton _button)
 {
     winrt::Windows::UI::Composition::CompositionSpriteShape circleShape{ nullptr };
@@ -327,7 +338,10 @@ void Highlighter::StartDrawing()
     SetWindowPos(m_hwnd, HWND_TOPMOST, GetSystemMetrics(SM_XVIRTUALSCREEN) + 1, GetSystemMetrics(SM_YVIRTUALSCREEN) + 1, GetSystemMetrics(SM_CXVIRTUALSCREEN) - 2, GetSystemMetrics(SM_CYVIRTUALSCREEN) - 2, 0);
     ClearDrawing();
     ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
-    instance->AddDrawingPoint(MouseButton::None);
+    if (m_alwaysPointerEnabled)
+    {
+        AddDrawingPoint(MouseButton::None);
+    }
     m_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, m_hinstance, 0);
 }
 
@@ -352,7 +366,7 @@ void Highlighter::SwitchActivationMode()
 }
 
 void Highlighter::ApplySettings(MouseHighlighterSettings settings) {
-    m_radius = static_cast<float>(settings.radius);
+    auto new_radius = static_cast<float>(settings.radius);
     m_fadeDelay_ms = settings.fadeDelayMs;
     m_fadeDuration_ms = settings.fadeDurationMs;
     m_leftClickColor = settings.leftButtonColor;
@@ -360,7 +374,30 @@ void Highlighter::ApplySettings(MouseHighlighterSettings settings) {
     m_alwaysColor = settings.alwaysColor;
     m_leftPointerEnabled = settings.leftButtonColor.A != 0;
     m_rightPointerEnabled = settings.rightButtonColor.A != 0;
-    m_alwaysPointerEnabled = settings.alwaysColor.A != 0;
+    auto new_alwaysPointerEnabled = settings.alwaysColor.A != 0;
+
+    /* Update AlwaysPointer if it is initialized and currently activated */
+    if (nullptr != m_alwaysPointer && m_alwaysPointerEnabled && !m_leftButtonPressed && !m_rightButtonPressed)
+    {
+        if (m_radius != new_radius)
+        {
+            /* Recreate on radius change */
+            ClearDrawingPoint(MouseButton::None);
+            AddDrawingPoint(MouseButton::None);
+        }
+        else if (new_alwaysPointerEnabled)
+        {
+            /* Update color only */
+            UpdateDrawingPointColor(MouseButton::None);
+        }
+        else
+        {
+            /* Clear if disabled */
+            ClearDrawingPoint(MouseButton::None);
+        }
+    }
+    m_radius = new_radius;
+    m_alwaysPointerEnabled = new_alwaysPointerEnabled;
 }
 
 void Highlighter::DestroyHighlighter()
